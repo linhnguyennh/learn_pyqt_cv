@@ -1,8 +1,12 @@
 import sys
 import cv2
 
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QPushButton,
-                            QLabel)
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow,
+    QWidget, QHBoxLayout, QVBoxLayout,
+    QPushButton, QLabel, QLineEdit,      # added QLineEdit
+    QFileDialog                           # added QFileDialog
+)
 
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QImage, QPixmap
@@ -15,6 +19,9 @@ class MainWindow(QMainWindow):
 
         #State variable
         self.mirrored = False
+        self.save_folder = ""
+        self.image_counter = 0
+        self.last_frame = None
 
         #Main widget
         central_widget = QWidget()
@@ -47,9 +54,26 @@ class MainWindow(QMainWindow):
         controls_layout.setContentsMargins(10, 20, 10, 20) #left, top, right, bottom
         self.controls_panel.setLayout(controls_layout)
         
+        #Save settings section
+        settings_label = QLabel("Save settings")
+        settings_label.setStyleSheet("color: white; font-weight: bold;")
+
+        self.path_display = QLineEdit()
+        self.path_display.setReadOnly(True)
+        self.path_display.setPlaceholderText("No folder selected")
+        self.path_display.setStyleSheet("background-color: #fff;")
+
+        self.button_browse = QPushButton("Browse Folder")
+        self.button_browse.clicked.connect(self.browse_folder)
+
+        # divider line between settings and buttons
+        divider = QWidget()
+        divider.setFixedHeight(1)
+        divider.setStyleSheet("background-color: #666;")
+
         #Buttons
-        self.button_a = QPushButton("Button A")
-        self.button_b = QPushButton("Button B")
+        self.button_a = QPushButton("Mirror")
+        self.button_b = QPushButton("Save image")
         self.button_c = QPushButton("Button C")
         self.button_d = QPushButton("Button D")
         self.button_e = QPushButton("Button E")
@@ -62,6 +86,13 @@ class MainWindow(QMainWindow):
         self.button_d.setFixedHeight(40)
         self.button_e.setFixedHeight(40)
         self.button_f.setFixedHeight(40)
+
+        controls_layout.addWidget(settings_label)
+        controls_layout.addWidget(self.path_display)
+        controls_layout.addWidget(self.button_browse)
+        controls_layout.addWidget(divider)
+
+        controls_layout.addSpacing(5)
 
         controls_layout.addWidget(self.button_a)
         controls_layout.addWidget(self.button_b)
@@ -78,7 +109,7 @@ class MainWindow(QMainWindow):
 
         #Connect the buttons
         self.button_a.clicked.connect(self.toggle_mirror)
-
+        self.button_b.clicked.connect(self.save_image)
         # Add (widget) panels to main layout
         main_layout.addWidget(self.feed_panel)
         main_layout.addWidget(self.controls_panel)
@@ -98,6 +129,8 @@ class MainWindow(QMainWindow):
         #flip image if mirror button toggled
         if self.mirrored:
             frame = cv2.flip(frame, 1) # 1 = Horizontal flip
+
+        self.last_frame = frame.copy()
 
         #openCV BGR to Qt RGB
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -127,6 +160,31 @@ class MainWindow(QMainWindow):
             self.button_a.setText("Mirror: ON")
         else:
             self.button_a.setText("Mirror: OFF")
+    
+    def browse_folder(self):
+        folder = QFileDialog.getExistingDirectory(
+            self,
+            "Select Save Folder"
+        )
+
+        if folder:
+            self.save_folder = folder
+            self.path_display.setText(folder)
+    
+    def save_image(self):
+        if not self.save_folder:
+            print("No folder selected!")
+            return
+        if self.last_frame is None:
+            print("No frame to save!")
+            return
+    
+        filename = f"image_{self.image_counter:03d}.png"
+        filepath = f"{self.save_folder}/{filename}"
+
+        cv2.imwrite(filepath, self.last_frame)
+        self.image_counter += 1
+        print(f"Saved: {filepath}")
     
 def main():
     app = QApplication(sys.argv)
