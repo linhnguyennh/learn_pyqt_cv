@@ -11,6 +11,12 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QTimer, Qt
 from PyQt6.QtGui import QImage, QPixmap
 
+from queue import Queue
+
+from vision.capturer import CaptureThread
+from vision.mp_hand_tracker import MediaPipeThread
+
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -116,24 +122,46 @@ class MainWindow(QMainWindow):
 
 
         #Webcam & Timer
-        self.cap = cv2.VideoCapture(0)
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.update_frame)
-        self.timer.start(30)        #update every 30ms (calls update_frame)
-
-    def update_frame(self):
-        ret, frame = self.cap.read() #read 1 frame
-        if not ret:
-            return #skip if no frame
+        #NO NEED ANYMORE - HANDLED BY CAPTURETHREAD
+        #self.cap = cv2.VideoCapture(0)
         
-        #flip image if mirror button toggled
+        #ALSO NO NEED
+        # self.timer = QTimer()
+        # self.timer.timeout.connect(self.update_frame)
+        # self.timer.start(30)        #update every 30ms (calls update_frame)
+    
+        #Thread workers
+        self.frame_queue = Queue(maxsize=1)
+        self.capture_thread = CaptureThread(self.frame_queue)
+        self.mp_thread = MediaPipeThread(self.frame_queue)
+        self.mp_thread.frame_ready.connect(self.update_frame) #When this is called, emit already pass the data directly into update_frame()
+        
+        self.thread_start()
+
+    def thread_start(self):
+        self.capture_thread.start()
+        self.mp_thread.start()
+
+    def thread_stop(self):
+        self.capture_thread.stop()
+        self.mp_thread.stop()
+
+
+    def update_frame(self, frame):
+        # ret, frame = self.cap.read() #read 1 frame
+        # if not ret:
+        #     return #skip if no frame
+        
+        # #flip image if mirror button toggled
         if self.mirrored:
             frame = cv2.flip(frame, 1) # 1 = Horizontal flip
 
         self.last_frame = frame.copy()
 
+        #NO NEED ANYMORE - HANDLED BY MEDIAPIPETHREAD
         #openCV BGR to Qt RGB
-        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        
+
         h,w,ch = frame.shape
 
         qt_image = QImage(frame.data, w,h,ch*w, QImage.Format.Format_RGB888)
@@ -150,9 +178,7 @@ class MainWindow(QMainWindow):
     
     def closeEvent(self,event):
         #Cleanly release webcam when closed
-        self.timer.stop()
-        self.cap.release()
-        event.accept()
+        self.thread_stop()
 
     def toggle_mirror(self):
         self.mirrored = not self.mirrored
@@ -182,6 +208,7 @@ class MainWindow(QMainWindow):
         filename = f"image_{self.image_counter:03d}.png"
         filepath = f"{self.save_folder}/{filename}"
 
+        self.last_frame = cv2.cvtColor(self.last_frame, cv2.COLOR_RGB2BGR)
         cv2.imwrite(filepath, self.last_frame)
         self.image_counter += 1
         print(f"Saved: {filepath}")
